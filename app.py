@@ -1,6 +1,7 @@
 import streamlit as st
 import openai
 import gspread
+import json
 from oauth2client.service_account import ServiceAccountCredentials
 
 # 페이지 제목
@@ -10,11 +11,12 @@ st.title("🧠 감정상담 챗봇 + PHQ-9 평가")
 user_name = st.text_input("👤 상담자 이름을 입력해주세요:")
 
 # OpenAI API 키 설정
-openai.api_key = st.secrets["OPENAI_API_KEY."]
+openai.api_key = st.secrets["OPENAI_API_KEY"]
 
-# 구글 시트 인증
+# 구글 시트 인증 (Secrets에서 JSON을 불러와 dict로 처리)
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
+creds_dict = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
+creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
 gs_client = gspread.authorize(creds)
 sheet = gs_client.open("PHQ9_결과_저장소").sheet1
 
