@@ -2,6 +2,7 @@ import streamlit as st
 import openai
 import gspread
 import json
+from openai import OpenAI
 from oauth2client.service_account import ServiceAccountCredentials
 
 # 페이지 제목
@@ -10,8 +11,8 @@ st.title("🧠 감정상담 챗봇 + PHQ-9 평가")
 # 사용자 이름 입력
 user_name = st.text_input("👤 상담자 이름을 입력해주세요:")
 
-# OpenAI API 키 설정
-openai.api_key = st.secrets["OPENAI_API_KEY"]
+# OpenAI 클라이언트 초기화
+client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
 # 구글 시트 인증 (Secrets에서 JSON을 불러와 dict로 처리)
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -55,7 +56,7 @@ if prompt := st.chat_input("지금 어떤 기분이신가요?"):
     st.session_state.messages.append({"role": "user", "content": prompt})
 
     with st.spinner("상담 중..."):
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=st.session_state.messages
         )
@@ -106,7 +107,6 @@ if len(st.session_state.phq9_scores) == 9:
     if st.session_state.phq9_scores[8] >= 1:
         st.error("⚠️ 자살 관련 문항에 응답이 있습니다. 반드시 전문가 상담이 필요합니다.")
 
-    # 시트 저장
     if user_name:
         sheet.append_row([user_name, total, level])
         st.balloons()
