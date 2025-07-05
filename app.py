@@ -10,7 +10,7 @@ st.title("🧠 감정상담 챗봇 + PHQ-9 평가")
 user_name = st.text_input("👤 상담자 이름을 입력해주세요:")
 
 # OpenAI API 키 설정
-openai.api_key = st.secrets["OPENAI_API_KEY"]
+openai.api_key = st.secrets["OPENAI_API_KEY."]
 
 # 구글 시트 인증
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
