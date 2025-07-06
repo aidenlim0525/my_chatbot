@@ -13,7 +13,7 @@ scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/au
 creds_dict = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
 gs_client = gspread.authorize(creds)
-sheet = gs_client.open("PHQ9_결과_저장소").sheet1
+sheet = gs_client.open("PHQ9_결과_저장소").worksheet("Sheet1")  # 정확한 워크시트명 사용
 
 # === PHQ-9 질문 ===
 phq9_questions = [
@@ -38,7 +38,7 @@ score_options = {
 # === 초기 세션 상태 ===
 if "messages" not in st.session_state:
     st.session_state.messages = [
-        {"role": "system", "content": "당신은 공감 잘하는 심리상담 챗봇입니다. 사용자 감정을 섬세히 듣고 PHQ-9 설문으로 자연스럽게 유도하세요."}
+        {"role": "system", "content": "당신은 따뜻하고 공감하는 심리상담 챗봇입니다. 사용자 감정을 경청하세요. 단, PHQ-9 설문지는 챗봇이 직접 묻지 않고 Streamlit 앱이 제공합니다."}
     ]
 if "phq9_scores" not in st.session_state:
     st.session_state.phq9_scores = []
@@ -84,10 +84,14 @@ if prompt := st.chat_input("지금 어떤 기분이신가요?"):
                 st.error("⚠️ 자살 관련 응답이 감지되었습니다. 이 챗봇은 상담도구일 뿐이며, 전문가와 꼭 이야기해보세요.")
 
             if user_name:
-                sheet.append_row([user_name, total, level, f"{answered}/9", "예측 점수 포함", datetime.now().strftime("%Y-%m-%d %H:%M:%S")], value_input_option='USER_ENTERED')
-                st.info("Google Sheets에 저장했습니다.")
+                try:
+                    sheet.append_row([user_name, total, level, f"{answered}/9", "예측 점수 포함", datetime.now().strftime("%Y-%m-%d %H:%M:%S")], value_input_option='USER_ENTERED')
+                    st.success("✅ Google Sheets에 저장 완료!")
+                except Exception as e:
+                    st.error("❌ 저장 중 오류 발생")
+                    st.exception(e)
 
-            # 상담 리포트 다운로드
+            # 리포트 다운로드
             csv_data = pd.DataFrame({
                 "이름": [user_name],
                 "총점": [total],
@@ -107,8 +111,12 @@ if prompt := st.chat_input("지금 어떤 기분이신가요?"):
             st.subheader("📝 상담 피드백")
             feedback = st.radio("상담이 도움이 되었나요?", ["많이 도움이 되었어요", "보통이에요", "도움이 되지 않았어요"])
             if feedback:
-                sheet.append_row(["피드백", user_name, feedback, datetime.now().strftime("%Y-%m-%d %H:%M:%S")])
-                st.success("피드백 감사합니다!")
+                try:
+                    sheet.append_row(["피드백", user_name, feedback, datetime.now().strftime("%Y-%m-%d %H:%M:%S")])
+                    st.success("피드백 감사합니다!")
+                except Exception as e:
+                    st.error("❌ 피드백 저장 실패")
+                    st.exception(e)
 
     else:
         with st.spinner("상담 중..."):
@@ -117,9 +125,10 @@ if prompt := st.chat_input("지금 어떤 기분이신가요?"):
                 messages=st.session_state.messages
             )
             reply = response.choices[0].message.content
+            if "yes/no" in reply.lower():
+                st.warning("⚠️ 챗봇이 PHQ-9 질문을 직접 물었습니다. 이 질문은 무시하고 아래 선택지로 답변해 주세요.")
             st.session_state.messages.append({"role": "assistant", "content": reply})
 
-        # 감정 키워드 트리거
         triggers = ["우울", "힘들", "슬퍼", "무기력", "죽고", "지쳤"]
         if any(word in prompt for word in triggers):
             next_q = len(st.session_state.phq9_scores)
