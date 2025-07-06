@@ -1,9 +1,10 @@
-# 감정상담 챗봇 + PHQ-9 평가 (최신 수정본)
+# 감정상담 챗봇 + PHQ-9 평가 (최신 수정본 with 안전한 다운로드)
 import streamlit as st
 import openai
 import gspread
 import json
 import pandas as pd
+import io
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
 
@@ -56,7 +57,6 @@ end_phrases = ["상담 종료", "그만할래", "끝낼게요", "이만 마칠�
 if prompt := st.chat_input("지금 어떤 기분이신가요?"):
     st.session_state.messages.append({"role": "user", "content": prompt})
 
-    # 종료 의사 감지
     if any(p in prompt for p in end_phrases):
         scores = st.session_state.phq9_scores
         answered = len(scores)
@@ -91,7 +91,7 @@ if prompt := st.chat_input("지금 어떤 기분이신가요?"):
                     st.error("❌ 저장 중 오류 발생")
                     st.exception(e)
 
-            # 리포트 다운로드
+            # 안전한 리포트 다운로드
             csv_data = pd.DataFrame({
                 "이름": [user_name],
                 "총점": [total],
@@ -102,17 +102,17 @@ if prompt := st.chat_input("지금 어떤 기분이신가요?"):
                 "GPT 응답": ["-"],
                 "감정 키워드": ["-"]
             })
-            csv_path = f"/mnt/data/report_{user_name}.csv"
-            csv_data.to_csv(csv_path, index=False)
-            with open(csv_path, "rb") as f:
-                st.download_button("📄 상담 리포트 다운로드", f, file_name=f"PHQ9_{user_name}.csv")
+            csv_buffer = io.StringIO()
+            csv_data.to_csv(csv_buffer, index=False)
+            csv_bytes = io.BytesIO(csv_buffer.getvalue().encode("utf-8"))
 
-            # 피드백 수집
+            st.download_button("📄 상담 리포트 다운로드", data=csv_bytes, file_name=f"PHQ9_{user_name}.csv", mime="text/csv")
+
             st.subheader("📝 상담 피드백")
             feedback = st.radio("상담이 도움이 되었나요?", ["많이 도움이 되었어요", "보통이에요", "도움이 되지 않았어요"])
             if feedback:
                 try:
-                    sheet.append_row(["피드백", user_name, feedback, datetime.now().strftime("%Y-%m-%d %H:%M:%S")])
+                    sheet.append_row(["피드백", user_name, feedback, datetime.now().strftime("%Y-%m-%d %H:%M:%S")], value_input_option='USER_ENTERED')
                     st.success("피드백 감사합니다!")
                 except Exception as e:
                     st.error("❌ 피드백 저장 실패")
@@ -129,7 +129,6 @@ if prompt := st.chat_input("지금 어떤 기분이신가요?"):
                 st.warning("⚠️ 챗봇이 PHQ-9 질문을 직접 물었습니다. 이 질문은 무시하고 아래 선택지로 답변해 주세요.")
             st.session_state.messages.append({"role": "assistant", "content": reply})
 
-        # 감정 키워드 트리거 또는 설문 요청
         triggers = ["우울", "힘들", "슬퍼", "무기력", "죽고", "지쳤", "자살", "죽고싶다", "죽고 싶다", "끝내고 싶다"]
         trigger_phrases = ["phq", "설문", "검사", "질문해줘", "테스트"]
 
@@ -140,12 +139,10 @@ if prompt := st.chat_input("지금 어떤 기분이신가요?"):
                 st.session_state.show_phq9 = True
                 st.session_state.current_q = next_q
 
-# === 메시지 출력 ===
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-# === PHQ-9 문항 응답 ===
 if st.session_state.get("show_phq9") and user_name:
     q_idx = st.session_state.current_q
     if q_idx == 8:
