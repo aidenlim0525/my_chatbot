@@ -43,6 +43,8 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 if "phq9_scores" not in st.session_state:
     st.session_state.phq9_scores = []
+if "feedback_text" not in st.session_state:
+    st.session_state.feedback_text = ""
 
 st.title("🧠 감정상담 챗봇 + PHQ-9 평가")
 user_name = st.text_input("👤 상담자 이름을 입력해주세요:")
@@ -81,7 +83,7 @@ if prompt := st.chat_input("지금 어떤 기분이신가요?"):
             if user_name:
                 try:
                     now_kst = datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S")
-                    sheet_result.append_row([user_name, total, level, f"{answered}/9", "예측 점수 포함", now_kst], value_input_option='USER_ENTERED')
+                    sheet_result.append_row([user_name, total, level, f"{answered}/9", now_kst, prompt, "-", "-"], value_input_option='USER_ENTERED')
                     st.success("✅ Google Sheets에 저장 완료!")
                 except Exception as e:
                     st.error("❌ 저장 중 오류 발생")
@@ -95,7 +97,8 @@ if prompt := st.chat_input("지금 어떤 기분이신가요?"):
                 "상담 일시": [datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S")],
                 "사용자 메시지": [prompt],
                 "GPT 응답": ["-"],
-                "감정 키워드": ["-"]
+                "감정 키워드": ["-"],
+                "피드백": [st.session_state.feedback_text.strip()]
             })
             csv_buffer = io.StringIO()
             csv_data.to_csv(csv_buffer, index=False)
@@ -104,11 +107,11 @@ if prompt := st.chat_input("지금 어떤 기분이신가요?"):
             st.download_button("📄 상담 리포트 다운로드", data=csv_bytes, file_name=f"PHQ9_{user_name}.csv", mime="text/csv")
 
             st.subheader("📝 상담 피드백")
-            feedback_text = st.text_area("자유롭게 피드백을 남겨주세요:")
+            st.session_state.feedback_text = st.text_area("자유롭게 피드백을 남겨주세요:", value=st.session_state.feedback_text)
             if st.button("피드백 제출"):
-                if feedback_text.strip():
+                if st.session_state.feedback_text.strip():
                     try:
-                        sheet_feedback.append_row(["피드백", user_name, feedback_text, datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S")], value_input_option='USER_ENTERED')
+                        sheet_feedback.append_row(["피드백", user_name, st.session_state.feedback_text.strip(), datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S")], value_input_option='USER_ENTERED')
                         st.success("피드백 감사합니다!")
                     except Exception as e:
                         st.error("❌ 피드백 저장 실패")
