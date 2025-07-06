@@ -1,4 +1,4 @@
-# 감정상담 챗봇 + PHQ-9 평가 (개선 버전)
+# 감정상담 챗봇 + PHQ-9 평가 (최신 수정본)
 import streamlit as st
 import openai
 import gspread
@@ -13,7 +13,7 @@ scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/au
 creds_dict = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
 gs_client = gspread.authorize(creds)
-sheet = gs_client.open("PHQ9_결과_저장소").worksheet("Sheet1")  # 정확한 워크시트명 사용
+sheet = gs_client.open("PHQ9_결과_저장소").worksheet("Sheet1")
 
 # === PHQ-9 질문 ===
 phq9_questions = [
@@ -129,8 +129,11 @@ if prompt := st.chat_input("지금 어떤 기분이신가요?"):
                 st.warning("⚠️ 챗봇이 PHQ-9 질문을 직접 물었습니다. 이 질문은 무시하고 아래 선택지로 답변해 주세요.")
             st.session_state.messages.append({"role": "assistant", "content": reply})
 
-        triggers = ["우울", "힘들", "슬퍼", "무기력", "죽고", "지쳤"]
-        if any(word in prompt for word in triggers):
+        # 감정 키워드 트리거 또는 설문 요청
+        triggers = ["우울", "힘들", "슬퍼", "무기력", "죽고", "지쳤", "자살", "죽고싶다", "죽고 싶다", "끝내고 싶다"]
+        trigger_phrases = ["phq", "설문", "검사", "질문해줘", "테스트"]
+
+        if any(word in prompt for word in triggers) or any(p in prompt.lower() for p in trigger_phrases):
             next_q = len(st.session_state.phq9_scores)
             if next_q < 9 and next_q not in st.session_state.asked_indices:
                 st.session_state.asked_indices.add(next_q)
@@ -145,7 +148,7 @@ for msg in st.session_state.messages:
 # === PHQ-9 문항 응답 ===
 if st.session_state.get("show_phq9") and user_name:
     q_idx = st.session_state.current_q
-    if q_idx == 8:  # 9번 문항
+    if q_idx == 8:
         st.warning("⚠️ 이 문항은 민감할 수 있습니다. 원하지 않으면 건너뛸 수 있습니다.")
     score = st.radio(
         f"📍 추가 질문: {phq9_questions[q_idx]}",
