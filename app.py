@@ -103,10 +103,10 @@ if prompt := st.chat_input("지금 어떤 기분이신가요?"):
             st.download_button("📄 상담 리포트 다운로드", data=csv_bytes, file_name=f"PHQ9_{user_name}.csv", mime="text/csv")
 
             st.subheader("📝 상담 피드백")
-            feedback = st.radio("상담이 도움이 되었나요?", ["많이 도움이 되었어요", "보통이에요", "도움이 되지 않았어요"])
-            if feedback:
+            feedback_text = st.text_area("자유롭게 피드백을 남겨주세요:")
+            if st.button("피드백 제출") and feedback_text:
                 try:
-                    sheet_feedback.append_row(["피드백", user_name, feedback, datetime.now().strftime("%Y-%m-%d %H:%M:%S")], value_input_option='USER_ENTERED')
+                    sheet_feedback.append_row(["피드백", user_name, feedback_text, datetime.now().strftime("%Y-%m-%d %H:%M:%S")], value_input_option='USER_ENTERED')
                     st.success("피드백 감사합니다!")
                 except Exception as e:
                     st.error("❌ 피드백 저장 실패")
