@@ -1,4 +1,4 @@
-# 감정상담 챗봇 + PHQ-9 평가 (최신 수정본 with 안전한 다운로드)
+# 감정상담 챗봇 + PHQ-9 평가 (최종 개선: 피드백 분리 + 한글 리포트 인코딩)
 import streamlit as st
 import openai
 import gspread
@@ -14,7 +14,8 @@ scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/au
 creds_dict = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
 gs_client = gspread.authorize(creds)
-sheet = gs_client.open("PHQ9_결과_저장소").worksheet("Sheet1")
+sheet_result = gs_client.open("PHQ9_결과_저장소").worksheet("Sheet1")
+sheet_feedback = gs_client.open("PHQ9_결과_저장소").worksheet("Feedbacks")  # 피드백 전용 시트 추가 필요
 
 # === PHQ-9 질문 ===
 phq9_questions = [
@@ -36,7 +37,6 @@ score_options = {
     "거의 매일 (3점)": 3
 }
 
-# === 초기 세션 상태 ===
 if "messages" not in st.session_state:
     st.session_state.messages = [
         {"role": "system", "content": "당신은 따뜻하고 공감하는 심리상담 챗봇입니다. 사용자 감정을 경청하세요. 단, PHQ-9 설문지는 챗봇이 직접 묻지 않고 Streamlit 앱이 제공합니다."}
@@ -46,14 +46,11 @@ if "phq9_scores" not in st.session_state:
 if "asked_indices" not in st.session_state:
     st.session_state.asked_indices = set()
 
-# === 제목 & 사용자 이름 입력 ===
 st.title("🧠 감정상담 챗봇 + PHQ-9 평가")
 user_name = st.text_input("👤 상담자 이름을 입력해주세요:")
 
-# === 자연어 상담 종료 키워드 ===
 end_phrases = ["상담 종료", "그만할래", "끝낼게요", "이만 마칠게요", "종료하겠습니다"]
 
-# === 사용자 입력 ===
 if prompt := st.chat_input("지금 어떤 기분이신가요?"):
     st.session_state.messages.append({"role": "user", "content": prompt})
 
@@ -85,13 +82,13 @@ if prompt := st.chat_input("지금 어떤 기분이신가요?"):
 
             if user_name:
                 try:
-                    sheet.append_row([user_name, total, level, f"{answered}/9", "예측 점수 포함", datetime.now().strftime("%Y-%m-%d %H:%M:%S")], value_input_option='USER_ENTERED')
+                    sheet_result.append_row([user_name, total, level, f"{answered}/9", "예측 점수 포함", datetime.now().strftime("%Y-%m-%d %H:%M:%S")], value_input_option='USER_ENTERED')
                     st.success("✅ Google Sheets에 저장 완료!")
                 except Exception as e:
                     st.error("❌ 저장 중 오류 발생")
                     st.exception(e)
 
-            # 안전한 리포트 다운로드
+            # 리포트 다운로드 - UTF-8-sig로 Excel 호환
             csv_data = pd.DataFrame({
                 "이름": [user_name],
                 "총점": [total],
@@ -104,15 +101,16 @@ if prompt := st.chat_input("지금 어떤 기분이신가요?"):
             })
             csv_buffer = io.StringIO()
             csv_data.to_csv(csv_buffer, index=False)
-            csv_bytes = io.BytesIO(csv_buffer.getvalue().encode("utf-8"))
+            csv_bytes = io.BytesIO(csv_buffer.getvalue().encode("utf-8-sig"))
 
             st.download_button("📄 상담 리포트 다운로드", data=csv_bytes, file_name=f"PHQ9_{user_name}.csv", mime="text/csv")
 
+            # 피드백 수집
             st.subheader("📝 상담 피드백")
             feedback = st.radio("상담이 도움이 되었나요?", ["많이 도움이 되었어요", "보통이에요", "도움이 되지 않았어요"])
             if feedback:
                 try:
-                    sheet.append_row(["피드백", user_name, feedback, datetime.now().strftime("%Y-%m-%d %H:%M:%S")], value_input_option='USER_ENTERED')
+                    sheet_feedback.append_row(["피드백", user_name, feedback, datetime.now().strftime("%Y-%m-%d %H:%M:%S")], value_input_option='USER_ENTERED')
                     st.success("피드백 감사합니다!")
                 except Exception as e:
                     st.error("❌ 피드백 저장 실패")
