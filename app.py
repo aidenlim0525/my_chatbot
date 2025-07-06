@@ -41,18 +41,16 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 if "phq9_scores" not in st.session_state:
     st.session_state.phq9_scores = []
-if "asked_indices" not in st.session_state:
-    st.session_state.asked_indices = set()
 
 st.title("🧠 감정상담 챗봇 + PHQ-9 평가")
 user_name = st.text_input("👤 상담자 이름을 입력해주세요:")
 
-end_phrases = ["상담 종료", "그만할래", "끝낼게요", "이만 마칠게요", "종료하겠습니다"]
+end_phrases = ["상담 종료", "그만할래", "끝낼게요", "이만 마칠게요", "종료하겠습니다", "그만두고 싶어", "이제 끝", "종료", "마무리할게요", "이제 그만"]
 
 if prompt := st.chat_input("지금 어떤 기분이신가요?"):
     st.session_state.messages.append({"role": "user", "content": prompt})
 
-    if any(p in prompt for p in end_phrases):
+    if any(p in prompt.lower() for p in end_phrases):
         scores = st.session_state.phq9_scores
         answered = len(scores)
 
@@ -112,29 +110,26 @@ if prompt := st.chat_input("지금 어떤 기분이신가요?"):
                     st.error("❌ 피드백 저장 실패")
                     st.exception(e)
 
+            st.info("상담이 종료되었습니다. 언제든지 다시 찾아주세요.")
+
     else:
         with st.spinner("상담 중..."):
             response = openai.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
-                    {"role": "system", "content": "당신은 따뜻하고 공감하는 심리상담 챗봇입니다. 사용자의 감정에 공감하고, 필요 시 'PHQ-9 설문을 함께 시작해보자'고 자연스럽게 유도하세요. 하지만 설문은 Streamlit 앱이 제공하므로 직접 질문하지는 마세요."},
+                    {"role": "system", "content": "당신은 따뜻하고 공감하는 심리상담 챗봇입니다. 사용자의 감정에 공감하고, 필요 시 'PHQ-9 설문을 함께 시작해보자'고 자연스럽게 유도하세요."},
                     *st.session_state.messages
                 ]
             )
             reply = response.choices[0].message.content
-            if "phq-9" in reply.lower() and "직접" in reply.lower():
-                reply = reply.replace("직접 PHQ-9 설문을 제공해드릴 수는 없어요.", "PHQ-9 설문은 아래에서 선택지로 진행하실 수 있어요. 함께 시작해볼까요?")
+            reply = reply.replace("PHQ-9 설문을 진행할 수 없어요.", "PHQ-9 설문은 아래에서 진행하실 수 있어요. 함께 시작해봐요!")
             st.session_state.messages.append({"role": "assistant", "content": reply})
 
         triggers = ["우울", "힘들", "슬퍼", "무기력", "죽고", "지쳤", "자살", "죽고싶다", "죽고 싶다", "끝내고 싶다"]
         trigger_phrases = ["phq", "설문", "검사", "질문해줘", "테스트"]
 
         if any(word in prompt for word in triggers) or any(p in prompt.lower() for p in trigger_phrases):
-            next_q = len(st.session_state.phq9_scores)
-            if next_q < 9 and next_q not in st.session_state.asked_indices:
-                st.session_state.asked_indices.add(next_q)
-                st.session_state.show_phq9 = True
-                st.session_state.current_q = next_q
+            st.session_state.show_phq9 = True
 
 for msg in st.session_state.messages:
     if msg["role"] != "system":
@@ -142,19 +137,16 @@ for msg in st.session_state.messages:
             st.markdown(msg["content"])
 
 if st.session_state.get("show_phq9") and user_name:
-    q_idx = st.session_state.current_q
-    if q_idx == 8:
-        st.warning("⚠️ 이 문항은 민감할 수 있습니다. 원하지 않으면 건너뛸 수 있습니다.")
-    score = st.radio(
-        f"📍 추가 질문: {phq9_questions[q_idx]}",
-        list(score_options.keys()),
-        key=f"phq9_{q_idx}"
-    )
-    st.markdown(f"➡️ 선택한 점수: {score}")
-    if st.button("→ 점수 제출", key=f"submit_{q_idx}"):
-        st.session_state.phq9_scores.append(score_options[score])
-        st.session_state.show_phq9 = False
-    if q_idx == 8:
-        if st.button("→ 이 문항 건너뛰기"):
-            st.session_state.phq9_scores.append(0)
+    st.subheader("📝 PHQ-9 설문")
+    with st.form("phq9_form"):
+        scores = []
+        for i, q in enumerate(phq9_questions):
+            if i == 8:
+                st.warning("⚠️ 마지막 문항은 민감할 수 있습니다. 원하지 않으면 생략 가능합니다.")
+            score = st.radio(q, list(score_options.keys()), key=f"q{i}", index=0)
+            scores.append(score_options[score])
+        submitted = st.form_submit_button("→ 설문 제출")
+        if submitted:
+            st.session_state.phq9_scores = scores
             st.session_state.show_phq9 = False
+            st.success("PHQ-9 설문이 제출되었습니다. '상담 종료'를 입력하면 결과가 정리됩니다.")
