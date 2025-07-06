@@ -6,7 +6,7 @@ import json
 import pandas as pd
 import io
 from oauth2client.service_account import ServiceAccountCredentials
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 # === 설정 ===
 openai.api_key = st.secrets["OPENAI_API_KEY"]
@@ -36,6 +36,8 @@ score_options = {
     "일주일 이상 (2점)": 2,
     "거의 매일 (3점)": 3
 }
+
+KST = timezone(timedelta(hours=9))
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -78,7 +80,8 @@ if prompt := st.chat_input("지금 어떤 기분이신가요?"):
 
             if user_name:
                 try:
-                    sheet_result.append_row([user_name, total, level, f"{answered}/9", "예측 점수 포함", datetime.now().strftime("%Y-%m-%d %H:%M:%S")], value_input_option='USER_ENTERED')
+                    now_kst = datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S")
+                    sheet_result.append_row([user_name, total, level, f"{answered}/9", "예측 점수 포함", now_kst], value_input_option='USER_ENTERED')
                     st.success("✅ Google Sheets에 저장 완료!")
                 except Exception as e:
                     st.error("❌ 저장 중 오류 발생")
@@ -89,7 +92,7 @@ if prompt := st.chat_input("지금 어떤 기분이신가요?"):
                 "총점": [total],
                 "우울 수준": [level],
                 "응답 수": [f"{answered}/9"],
-                "상담 일시": [datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
+                "상담 일시": [datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S")],
                 "사용자 메시지": [prompt],
                 "GPT 응답": ["-"],
                 "감정 키워드": ["-"]
@@ -102,13 +105,16 @@ if prompt := st.chat_input("지금 어떤 기분이신가요?"):
 
             st.subheader("📝 상담 피드백")
             feedback_text = st.text_area("자유롭게 피드백을 남겨주세요:")
-            if st.button("피드백 제출") and feedback_text:
-                try:
-                    sheet_feedback.append_row(["피드백", user_name, feedback_text, datetime.now().strftime("%Y-%m-%d %H:%M:%S")], value_input_option='USER_ENTERED')
-                    st.success("피드백 감사합니다!")
-                except Exception as e:
-                    st.error("❌ 피드백 저장 실패")
-                    st.exception(e)
+            if st.button("피드백 제출"):
+                if feedback_text.strip():
+                    try:
+                        sheet_feedback.append_row(["피드백", user_name, feedback_text, datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S")], value_input_option='USER_ENTERED')
+                        st.success("피드백 감사합니다!")
+                    except Exception as e:
+                        st.error("❌ 피드백 저장 실패")
+                        st.exception(e)
+                else:
+                    st.warning("피드백 내용을 입력해주세요.")
 
             st.info("상담이 종료되었습니다. 언제든지 다시 찾아주세요.")
 
