@@ -1,4 +1,4 @@
-# 감정상담 챗봇 + PHQ-9 평가 (최종 개선: 피드백 분리 + 한글 리포트 인코딩)
+# 감정상담 챗봇 + PHQ-9 평가 (최종 개선)
 import streamlit as st
 import openai
 import gspread
@@ -15,7 +15,7 @@ creds_dict = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
 gs_client = gspread.authorize(creds)
 sheet_result = gs_client.open("PHQ9_결과_저장소").worksheet("Sheet1")
-sheet_feedback = gs_client.open("PHQ9_결과_저장소").worksheet("Feedbacks")  # 피드백 전용 시트 추가 필요
+sheet_feedback = gs_client.open("PHQ9_결과_저장소").worksheet("Feedbacks")
 
 # === PHQ-9 질문 ===
 phq9_questions = [
@@ -38,9 +38,7 @@ score_options = {
 }
 
 if "messages" not in st.session_state:
-    st.session_state.messages = [
-        {"role": "system", "content": "당신은 따뜻하고 공감하는 심리상담 챗봇입니다. 사용자 감정을 경청하세요. 단, PHQ-9 설문지는 챗봇이 직접 묻지 않고 Streamlit 앱이 제공합니다."}
-    ]
+    st.session_state.messages = []
 if "phq9_scores" not in st.session_state:
     st.session_state.phq9_scores = []
 if "asked_indices" not in st.session_state:
@@ -88,7 +86,6 @@ if prompt := st.chat_input("지금 어떤 기분이신가요?"):
                     st.error("❌ 저장 중 오류 발생")
                     st.exception(e)
 
-            # 리포트 다운로드 - UTF-8-sig로 Excel 호환
             csv_data = pd.DataFrame({
                 "이름": [user_name],
                 "총점": [total],
@@ -105,7 +102,6 @@ if prompt := st.chat_input("지금 어떤 기분이신가요?"):
 
             st.download_button("📄 상담 리포트 다운로드", data=csv_bytes, file_name=f"PHQ9_{user_name}.csv", mime="text/csv")
 
-            # 피드백 수집
             st.subheader("📝 상담 피드백")
             feedback = st.radio("상담이 도움이 되었나요?", ["많이 도움이 되었어요", "보통이에요", "도움이 되지 않았어요"])
             if feedback:
@@ -120,11 +116,14 @@ if prompt := st.chat_input("지금 어떤 기분이신가요?"):
         with st.spinner("상담 중..."):
             response = openai.chat.completions.create(
                 model="gpt-3.5-turbo",
-                messages=st.session_state.messages
+                messages=[
+                    {"role": "system", "content": "당신은 따뜻하고 공감하는 심리상담 챗봇입니다. 사용자의 감정에 공감하고, 필요 시 'PHQ-9 설문을 함께 시작해보자'고 자연스럽게 유도하세요. 하지만 설문은 Streamlit 앱이 제공하므로 직접 질문하지는 마세요."},
+                    *st.session_state.messages
+                ]
             )
             reply = response.choices[0].message.content
-            if "yes/no" in reply.lower():
-                st.warning("⚠️ 챗봇이 PHQ-9 질문을 직접 물었습니다. 이 질문은 무시하고 아래 선택지로 답변해 주세요.")
+            if "phq-9" in reply.lower() and "직접" in reply.lower():
+                reply = reply.replace("직접 PHQ-9 설문을 제공해드릴 수는 없어요.", "PHQ-9 설문은 아래에서 선택지로 진행하실 수 있어요. 함께 시작해볼까요?")
             st.session_state.messages.append({"role": "assistant", "content": reply})
 
         triggers = ["우울", "힘들", "슬퍼", "무기력", "죽고", "지쳤", "자살", "죽고싶다", "죽고 싶다", "끝내고 싶다"]
@@ -138,8 +137,9 @@ if prompt := st.chat_input("지금 어떤 기분이신가요?"):
                 st.session_state.current_q = next_q
 
 for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
+    if msg["role"] != "system":
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
 
 if st.session_state.get("show_phq9") and user_name:
     q_idx = st.session_state.current_q
@@ -150,6 +150,7 @@ if st.session_state.get("show_phq9") and user_name:
         list(score_options.keys()),
         key=f"phq9_{q_idx}"
     )
+    st.markdown(f"➡️ 선택한 점수: {score}")
     if st.button("→ 점수 제출", key=f"submit_{q_idx}"):
         st.session_state.phq9_scores.append(score_options[score])
         st.session_state.show_phq9 = False
