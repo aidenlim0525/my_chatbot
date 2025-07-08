@@ -158,7 +158,8 @@ if st.session_state.phase == 'survey':
                 # 응답 저장 및 다음 문항으로 이동
                 st.session_state.scores.append(OPTIONS.index(ans))
                 st.session_state.qidx += 1
-                st.experimental_rerun()
+                # Streamlit 자동 rerun으로 다음 문항 표시됩니다.
+                st.stop()
     else:
         # 설문 완료 알림 후 챗 단계로 복귀
         st.session_state.messages.append({'role':'assistant', 'content':f"{st.session_state.qtype}-설문이 완료되었습니다. '상담 종료'를 입력하면 결과를 정리해드립니다."})
