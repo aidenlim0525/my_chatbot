@@ -103,7 +103,7 @@ if prompt:
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.spinner("답변 생성 중..."):
         try:
-            response = openai.ChatCompletion.create(
+            response = openai.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[{"role": "system", "content": "당신은 공감하는 심리상담 AI입니다."}] + st.session_state.messages
             )
