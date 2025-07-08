@@ -1,4 +1,4 @@
-# 감정상담 챗봇 + PHQ-9 & GAD-7 평가 (완전 재구성)
+# 감정상담 챗봇 + PHQ-9 & GAD-7 평가 (최종 완전 통합)
 import streamlit as st
 import openai
 import gspread
@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 
 # === 설정 및 인증 ===
 openai.api_key = st.secrets["OPENAI_API_KEY"]
-scope = ["https://spreadsheets.google.com/feeds","https://www.googleapis.com/auth/drive"]
+scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 creds_dict = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
 gs_client = gspread.authorize(creds)
@@ -20,8 +20,6 @@ sheet_feedback = gs_client.open("PHQ9_결과_저장소").worksheet("Feedbacks")
 # === 상수 ===
 KST = timezone(timedelta(hours=9))
 END_PHRASES = ["상담 종료","그만할래","끝낼게요","이만 마칠게요","종료하겠습니다","그만두고 싶어","이제 끝","종료","마무리할게요","이제 그만"]
-
-# === 질문 리스트 ===
 PHQ9 = [
     "최근 2주간, 일상에 흥미나 즐거움을 느끼지 못하셨나요?",
     "우울하거나 슬픈 기분이 들었던 적이 있으신가요?",
@@ -42,7 +40,7 @@ GAD7 = [
     "쉽게 짜증이 나거나 예민해지셨나요?",
     "끔찍한 일이 일어날 것 같다고 느끼신 적이 있으신가요?"
 ]
-OPTIONS = ["전혀 아님 (0점)","며칠 동안 (1점)","일주일 이상 (2점)","거의 매일 (3점)"]
+OPTIONS = ["전혀 아님 (0점)", "며칠 동안 (1점)", "일주일 이상 (2점)", "거의 매일 (3점)"]
 
 # === 분석 함수 ===
 def analyze_scores(scores, thresholds, levels, advices):
@@ -52,7 +50,6 @@ def analyze_scores(scores, thresholds, levels, advices):
             return total, lvl, adv
     return total, levels[-1], advices[-1]
 
-# PHQ-9: [4,9,14,19]; GAD-7: [4,9,14]
 PHQ_THRESH = [4,9,14,19]
 PHQ_LEVELS = ["정상","경도 우울","중등도 우울","중등도 이상 우울","심한 우울"]
 PHQ_ADVICE = [
@@ -62,7 +59,6 @@ PHQ_ADVICE = [
     "전문가 상담 및 약물치료를 검토하세요.",
     "즉각적인 전문 개입이 필요합니다."
 ]
-
 GAD_THRESH = [4,9,14]
 GAD_LEVELS = ["정상","경도 불안","중등도 불안","심한 불안"]
 GAD_ADVICE = [
@@ -73,85 +69,81 @@ GAD_ADVICE = [
 ]
 
 # === 세션 초기화 ===
-if 'phase' not in st.session_state: st.session_state.phase='chat'
-if 'messages' not in st.session_state: st.session_state.messages=[]
-if 'scores' not in st.session_state: st.session_state.scores=[]
-if 'qtype' not in st.session_state: st.session_state.qtype=None
-if 'qidx' not in st.session_state: st.session_state.qidx=0
+if 'phase' not in st.session_state: st.session_state.phase = 'chat'
+if 'messages' not in st.session_state: st.session_state.messages = []
+if 'scores' not in st.session_state: st.session_state.scores = []
+if 'qtype' not in st.session_state: st.session_state.qtype = None
+if 'qidx' not in st.session_state: st.session_state.qidx = 0
 
-# === UI ===
+# === UI 시작 ===
 st.title("🧠 감정상담 챗봇 + PHQ-9 & GAD-7")
 user = st.text_input("👤 이름을 입력해주세요:")
 
-# 상담 피드백
+# 피드백 저장
 st.subheader("📝 상담 피드백")
 fb = st.text_area("자유롭게 피드백을 남겨주세요:")
 if st.button("피드백 제출") and fb.strip():
-    sheet_feedback.append_row(["피드백",user,fb,datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S")],value_input_option='USER_ENTERED')
+    sheet_feedback.append_row(["피드백", user, fb.strip(), datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S")], value_input_option='USER_ENTERED')
     st.success("✅ 피드백 저장 완료")
 
 # 챗 메시지 출력
-for m in st.session_state.messages:
-    with st.chat_message(m['role']): st.markdown(m['content'])
+for msg in st.session_state.messages:
+    with st.chat_message(msg['role']):
+        st.markdown(msg['content'])
 
 # 유저 입력 처리
 if txt := st.chat_input("무엇이 궁금하신가요?"):
-    st.session_state.messages.append({'role': 'user', 'content': txt})
-    # 종료
+    st.session_state.messages.append({'role':'user','content':txt})
+    # 상담 종료
     if any(e in txt for e in END_PHRASES):
-        # ... existing termination logic ...
+        tp, lp, ap = analyze_scores(st.session_state.scores, PHQ_THRESH, PHQ_LEVELS, PHQ_ADVICE) if st.session_state.qtype=='PHQ' else (0,'','')
+        tg, lg, ag = analyze_scores(st.session_state.scores, GAD_THRESH, GAD_LEVELS, GAD_ADVICE) if st.session_state.qtype=='GAD' else (0,'','')
+        now = datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S")
+        # 저장 및 리포트
+        sheet_result.append_row([user, tp, lp, tg, lg, now, txt, fb.strip(), ap+" | "+ag], value_input_option='USER_ENTERED')
+        df = pd.DataFrame({
+            '이름':[user],'PHQ-9':[tp],'우울 수준':[lp],'GAD-7':[tg],'불안 수준':[lg],
+            '일시':[now],'피드백':[fb.strip()],'의학적 조언':[ap+" | "+ag]
+        })
+        buf = io.StringIO(); df.to_csv(buf, index=False)
+        st.download_button("📄 상담 리포트 다운로드", buf.getvalue(), file_name=f"report_{user}.csv", mime="text/csv")
+        st.info("상담이 종료되었습니다.")
         st.session_state.phase = 'done'
-        st.experimental_rerun()
     # PHQ-9 시작
     elif 'phq' in txt.lower():
         st.session_state.phase = 'survey'
         st.session_state.qtype = 'PHQ'
         st.session_state.scores = []
         st.session_state.qidx = 0
-        st.experimental_rerun()
     # GAD-7 시작
     elif 'gad' in txt.lower():
         st.session_state.phase = 'survey'
         st.session_state.qtype = 'GAD'
         st.session_state.scores = []
         st.session_state.qidx = 0
-        st.experimental_rerun()
     # 일반 대화
     else:
-        res = openai.chat.completions.create(
+        rsp = openai.chat.completions.create(
             model="gpt-3.5-turbo",
-            messages=[{'role': 'system', 'content': '당신은 따뜻하고 공감적인 상담 챗봇입니다.'}] + st.session_state.messages
+            messages=[{'role':'system','content':'당신은 따뜻하고 공감적인 상담 챗봇입니다.'}] + st.session_state.messages
         )
-        rp = res.choices[0].message.content
-        st.session_state.messages.append({'role': 'assistant', 'content': rp})
-        st.experimental_rerun()
+        reply = rsp.choices[0].message.content
+        st.session_state.messages.append({'role':'assistant','content':reply})
 
-# 설문 흐름 처리
+# 설문 흐름
 if st.session_state.phase == 'survey':
-    qlist = PHQ9 if st.session_state.qtype == 'PHQ' else GAD7
-    total_q = len(qlist)
+    questions = PHQ9 if st.session_state.qtype=='PHQ' else GAD7
+    total_q = len(questions)
     idx = st.session_state.qidx
     if idx < total_q:
-        st.chat_message('assistant').markdown(f"**{st.session_state.qtype}-설문 {idx+1}/{total_q}:** {qlist[idx]}")
-        ans = st.radio("답변", OPTIONS, key=f"ans{idx}")
+        with st.chat_message('assistant'):
+            st.markdown(f"**{st.session_state.qtype}-설문 {idx+1}/{total_q}:** {questions[idx]}")
+        ans = st.radio("답변을 선택해주세요:", OPTIONS, key=f"ans{idx}")
         if st.button("제출", key=f"sub{idx}"):
             st.session_state.scores.append(OPTIONS.index(ans))
             st.session_state.qidx += 1
             st.experimental_rerun()
     else:
-        st.session_state.messages.append({'role': 'assistant', 'content': f"{st.session_state.qtype}-설문이 완료되었습니다."})
+        st.session_state.messages.append({'role':'assistant','content':f"{st.session_state.qtype}-설문이 완료되었습니다."})
         st.session_state.phase = 'chat'
         st.experimental_rerun()
-if st.session_state.phase=='survey':
-    qlist = PHQ9 if st.session_state.qtype=='PHQ' else GAD7
-    total_q = len(qlist)
-    idx=st.session_state.qidx
-    if idx<total_q:
-        st.chat_message('assistant').markdown(f"**{st.session_state.qtype}-설문 {idx+1}/{total_q}:** {qlist[idx]}")
-        ans=st.radio("답변",OPTIONS,key=f"ans{idx}")
-        if st.button("제출",key=f"sub{idx}"):
-            st.session_state.scores.append(OPTIONS.index(ans))
-            st.session_state.qidx+=1
-    else:
-        st.chat_message('assistant').markdown(f"{st.session_state.qtype}-설문이 완료되었습니다.")
-        st.session_state.phase='chat'
