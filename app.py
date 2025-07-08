@@ -145,23 +145,21 @@ if st.session_state.phase == 'survey':
     idx = st.session_state.qidx
     total_q = len(questions)
     if idx < total_q:
-        # 챗 메시지로 질문 표시
-        with st.chat_message('assistant'):
-            st.markdown(f"**{st.session_state.qtype}-설문 {idx+1}/{total_q}:** {questions[idx]}")
-        # 폼으로 답변 수집
+        # 설문 질문 표시 (메시지 기록 없이 화면에만)
+        st.markdown(f"**{st.session_state.qtype}-설문 {idx+1}/{total_q}:** {questions[idx]}")
         form_key = f"form_{st.session_state.qtype}_{idx}"
         ans_key = f"ans_{st.session_state.qtype}_{idx}"
         with st.form(key=form_key):
             ans = st.radio("답변을 선택해주세요:", OPTIONS, key=ans_key)
             submitted = st.form_submit_button("제출")
             if submitted:
-                # 응답 저장 및 다음 문항으로 이동
                 st.session_state.scores.append(OPTIONS.index(ans))
                 st.session_state.qidx += 1
-                # Streamlit 자동 rerun으로 다음 문항 표시됩니다.
-                st.stop()
+                st.stop()  # 다음 문항을 위해 실행 중단
     else:
-        # 설문 완료 알림 후 챗 단계로 복귀
-        st.session_state.messages.append({'role':'assistant', 'content':f"{st.session_state.qtype}-설문이 완료되었습니다. '상담 종료'를 입력하면 결과를 정리해드립니다."})
+        # 설문 완료 알림
+        st.success(f"{st.session_state.qtype}-설문이 모두 완료되었습니다. '상담 종료'를 입력해주세요.")
         st.session_state.phase = 'chat'
-        st.experimental_rerun()
+        st.session_state.qidx = 0
+        st.session_state.qtype = None
+        st.stop()
