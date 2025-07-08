@@ -7,7 +7,7 @@ import io
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime, timedelta, timezone
 
-# 인증 및 환경설정
+# --- 인증 및 환경설정 ---
 openai.api_key = st.secrets["OPENAI_API_KEY"]
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 creds_dict = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
@@ -17,7 +17,8 @@ sheet_result = gs_client.open("PHQ9_결과_저장소").worksheet("Sheet1")
 sheet_feedback = gs_client.open("PHQ9_결과_저장소").worksheet("Feedbacks")
 
 KST = timezone(timedelta(hours=9))
-END_PHRASES = ["상담 종료", "그만할래", "끝낼게요", "이만 마칠게요", "종료하겠습니다", "그만두고 싶어", "이제 끝", "종료", "마무리할게요", "이제 그만"]
+END_PHRASES = ["상담 종료", "그만할래", "끝낼게요", "이만 마칠게요", "종료하겠습니다",
+               "그만두고 싶어", "이제 끝", "종료", "마무리할게요", "이제 그만"]
 PHQ9 = [
     "최근 2주간, 일상에 흥미나 즐거움을 느끼지 못하셨나요?",
     "우울하거나 슬픈 기분이 들었던 적이 있으신가요?",
@@ -90,7 +91,7 @@ for msg in st.session_state.messages:
     with st.chat_message(msg['role']):
         st.markdown(msg['content'])
 
-# ---- 메인 챗 입력 처리 ----
+# --- 챗 입력 처리 ---
 if txt := st.chat_input("무엇이 궁금하신가요?"):
     st.session_state.messages.append({'role':'user','content':txt})
     # 설문 종료
@@ -115,7 +116,7 @@ if txt := st.chat_input("무엇이 궁금하신가요?"):
         st.download_button("📄 상담 리포트 다운로드", buf.getvalue(), file_name=f"report_{user}.csv", mime="text/csv")
         st.info("상담이 종료되었습니다.")
         st.session_state.phase = 'done'
-        st.experimental_rerun()  # 종료 후 화면 갱신
+        st.stop()  # 종료 시 rerun 없이 stop
     # PHQ-9 설문 시작
     elif 'phq' in txt.lower():
         st.session_state.phase = 'survey'
@@ -132,7 +133,6 @@ if txt := st.chat_input("무엇이 궁금하신가요?"):
         st.experimental_rerun()
     # 일반 대화
     else:
-        # 시스템 프롬프트를 세련되고 전문적으로!
         sysmsg = {'role':'system','content': (
             '당신은 사용자의 감정에 공감하고, 심리적 안정과 전문적 조언을 제공하는 세련되고 공손한 심리상담 챗봇입니다. '
             '항상 친절하고, 자연스럽고, 정돈된 한국어로 응답합니다. 띄어쓰기와 맞춤법을 철저히 지키고, 짧은 문장으로 논리적인 흐름을 유지하세요. '
@@ -144,9 +144,9 @@ if txt := st.chat_input("무엇이 궁금하신가요?"):
         )
         reply = rsp.choices[0].message.content
         st.session_state.messages.append({'role':'assistant','content':reply})
-        st.experimental_rerun()  # ⭐ 입력-응답 즉시 화면 갱신
+        st.experimental_rerun()   # chat 대화에서만 rerun!
 
-# ---- 설문 흐름 ----
+# --- 설문 흐름 ---
 if st.session_state.phase == 'survey':
     questions = PHQ9 if st.session_state.qtype == 'PHQ' else GAD7
     idx = st.session_state.qidx
@@ -172,4 +172,4 @@ if st.session_state.phase == 'survey':
         st.session_state.phase = 'chat'
         st.session_state.qidx = 0
         st.session_state.qtype = None
-        st.experimental_rerun()
+        st.stop()  # 설문 종료 후 rerun 없이 stop
