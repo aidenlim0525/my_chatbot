@@ -97,6 +97,26 @@ if "feedback_text" not in st.session_state:
 st.title("🧠 감정상담 챗봇 + PHQ-9 & GAD-7 평가")
 user_name = st.text_input("👤 상담자 이름을 입력해주세요:")
 
+# === 채팅 인터페이스 ===
+prompt = st.chat_input("무엇이든 이야기해 주세요.")
+if prompt:
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    with st.spinner("답변 생성 중..."):
+        try:
+            response = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "system", "content": "당신은 공감하는 심리상담 AI입니다."}] + st.session_state.messages
+            )
+            reply = response.choices[0].message.content.strip()
+            st.session_state.messages.append({"role": "assistant", "content": reply})
+        except Exception as e:
+            st.error("GPT 응답 오류 발생")
+            st.exception(e)
+
+for msg in st.session_state.messages:
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
+
 # === PHQ-9 설문 ===
 with st.form("phq9_form"):
     st.subheader("📋 PHQ-9 설문")
