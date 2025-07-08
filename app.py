@@ -77,8 +77,6 @@ if 'qtype' not in st.session_state:
     st.session_state.qtype = None
 if 'qidx' not in st.session_state:
     st.session_state.qidx = 0
-if 'needs_rerun' not in st.session_state:
-    st.session_state.needs_rerun = False
 
 st.title("🧠 감정상담 챗봇 + PHQ-9 & GAD-7")
 user = st.text_input("👤 이름을 입력해주세요:")
@@ -94,7 +92,7 @@ for msg in st.session_state.messages:
     with st.chat_message(msg['role']):
         st.markdown(msg['content'])
 
-# --- 챗 입력 처리 ---
+# --- 챗 입력 처리 (rerun X) ---
 if txt := st.chat_input("무엇이 궁금하신가요?"):
     st.session_state.messages.append({'role':'user','content':txt})
     # 설문 종료
@@ -102,7 +100,6 @@ if txt := st.chat_input("무엇이 궁금하신가요?"):
         tp, lp, ap = analyze_scores(st.session_state.scores, PHQ_THRESH, PHQ_LEVELS, PHQ_ADVICE) if st.session_state.qtype=='PHQ' else (0,'','')
         tg, lg, ag = analyze_scores(st.session_state.scores, GAD_THRESH, GAD_LEVELS, GAD_ADVICE) if st.session_state.qtype=='GAD' else (0,'','')
         now = datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S")
-        # 챗봇 피드백 메시지
         if st.session_state.qtype == 'PHQ':
             st.session_state.messages.append({'role':'assistant','content':f"PHQ-9 우울 총점: {tp}점 ({lp})\n\n의학적 피드백: {ap}"})
         elif st.session_state.qtype == 'GAD':
@@ -119,7 +116,6 @@ if txt := st.chat_input("무엇이 궁금하신가요?"):
         st.download_button("📄 상담 리포트 다운로드", buf.getvalue(), file_name=f"report_{user}.csv", mime="text/csv")
         st.info("상담이 종료되었습니다.")
         st.session_state.phase = 'done'
-        st.session_state.needs_rerun = False
         st.stop()
     # PHQ-9 설문 시작
     elif 'phq' in txt.lower():
@@ -127,14 +123,12 @@ if txt := st.chat_input("무엇이 궁금하신가요?"):
         st.session_state.qtype = 'PHQ'
         st.session_state.scores = []
         st.session_state.qidx = 0
-        st.session_state.needs_rerun = True
     # GAD-7 설문 시작
     elif 'gad' in txt.lower():
         st.session_state.phase = 'survey'
         st.session_state.qtype = 'GAD'
         st.session_state.scores = []
         st.session_state.qidx = 0
-        st.session_state.needs_rerun = True
     # 일반 대화
     else:
         sysmsg = {'role':'system','content': (
@@ -148,7 +142,6 @@ if txt := st.chat_input("무엇이 궁금하신가요?"):
         )
         reply = rsp.choices[0].message.content
         st.session_state.messages.append({'role':'assistant','content':reply})
-        st.session_state.needs_rerun = True
 
 # --- 설문 흐름 ---
 if st.session_state.phase == 'survey':
@@ -177,8 +170,3 @@ if st.session_state.phase == 'survey':
         st.session_state.qidx = 0
         st.session_state.qtype = None
         st.stop()
-
-# --- 챗 대화 자동 새로고침 ---
-if st.session_state.needs_rerun:
-    st.session_state.needs_rerun = False
-    st.experimental_rerun()
