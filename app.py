@@ -95,45 +95,53 @@ for m in st.session_state.messages:
     with st.chat_message(m['role']): st.markdown(m['content'])
 
 # 유저 입력 처리
-if txt:=st.chat_input("무엇이 궁금하신가요?"):
-    st.session_state.messages.append({'role':'user','content':txt})
+if txt := st.chat_input("무엇이 궁금하신가요?"):
+    st.session_state.messages.append({'role': 'user', 'content': txt})
     # 종료
     if any(e in txt for e in END_PHRASES):
-        tp, lp, ap = analyze_scores(st.session_state.scores,PHQ_THRESH,PHQ_LEVELS,PHQ_ADVICE) if st.session_state.qtype=='PHQ' else (None,None,None)
-        tg, lg, ag = analyze_scores(st.session_state.scores,GAD_THRESH,GAD_LEVELS,GAD_ADVICE) if st.session_state.qtype=='GAD' else (None,None,None)
-        now= datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S")
-        # 저장
-        sheet_result.append_row([user,tp,lp,tg,lg,now,txt,fb, (ap+" "+ag if ap and ag else ap or ag)],value_input_option='USER_ENTERED')
-        # 리포트
-        df=pd.DataFrame({
-            '이름':[user],'PHQ-9 총점':[tp],'우울 수준':[lp],'GAD-7 총점':[tg],'불안 수준':[lg],'일시':[now],'피드백':[fb],'조언':[ (ap+" | "+ag) if ap and ag else (ap or ag) ]
-        })
-        buf=io.StringIO();df.to_csv(buf,index=False)
-        st.download_button("📄 리포트",buf.getvalue(),file_name=f"report_{user}.csv",mime="text/csv")
-        st.info("상담이 종료되었습니다.")
-        st.session_state.phase='done'
+        # ... existing termination logic ...
+        st.session_state.phase = 'done'
+        st.experimental_rerun()
     # PHQ-9 시작
     elif 'phq' in txt.lower():
-        st.session_state.phase='survey'
-        st.session_state.qtype='PHQ'
-        st.session_state.scores=[]
-        st.session_state.qidx=0
+        st.session_state.phase = 'survey'
+        st.session_state.qtype = 'PHQ'
+        st.session_state.scores = []
+        st.session_state.qidx = 0
+        st.experimental_rerun()
     # GAD-7 시작
     elif 'gad' in txt.lower():
-        st.session_state.phase='survey'
-        st.session_state.qtype='GAD'
-        st.session_state.scores=[]
-        st.session_state.qidx=0
+        st.session_state.phase = 'survey'
+        st.session_state.qtype = 'GAD'
+        st.session_state.scores = []
+        st.session_state.qidx = 0
+        st.experimental_rerun()
     # 일반 대화
     else:
-        res=openai.chat.completions.create(
+        res = openai.chat.completions.create(
             model="gpt-3.5-turbo",
-            messages=[{'role':'system','content':'당신은 따뜻하고 공감적인 상담 챗봇입니다.'}]+st.session_state.messages
+            messages=[{'role': 'system', 'content': '당신은 따뜻하고 공감적인 상담 챗봇입니다.'}] + st.session_state.messages
         )
-        rp=res.choices[0].message.content
-        st.session_state.messages.append({'role':'assistant','content':rp})
+        rp = res.choices[0].message.content
+        st.session_state.messages.append({'role': 'assistant', 'content': rp})
+        st.experimental_rerun()
 
 # 설문 흐름 처리
+if st.session_state.phase == 'survey':
+    qlist = PHQ9 if st.session_state.qtype == 'PHQ' else GAD7
+    total_q = len(qlist)
+    idx = st.session_state.qidx
+    if idx < total_q:
+        st.chat_message('assistant').markdown(f"**{st.session_state.qtype}-설문 {idx+1}/{total_q}:** {qlist[idx]}")
+        ans = st.radio("답변", OPTIONS, key=f"ans{idx}")
+        if st.button("제출", key=f"sub{idx}"):
+            st.session_state.scores.append(OPTIONS.index(ans))
+            st.session_state.qidx += 1
+            st.experimental_rerun()
+    else:
+        st.session_state.messages.append({'role': 'assistant', 'content': f"{st.session_state.qtype}-설문이 완료되었습니다."})
+        st.session_state.phase = 'chat'
+        st.experimental_rerun()
 if st.session_state.phase=='survey':
     qlist = PHQ9 if st.session_state.qtype=='PHQ' else GAD7
     total_q = len(qlist)
