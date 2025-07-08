@@ -1,4 +1,4 @@
-# 감정상담 챗봇 + PHQ-9 & GAD-7 평가 (최종 완전 통합)
+# 감정상담 챗봇 + PHQ-9 & GAD-7 평가 (완전 통합, rerun 제거)
 import streamlit as st
 import openai
 import gspread
@@ -17,9 +17,10 @@ gs_client = gspread.authorize(creds)
 sheet_result = gs_client.open("PHQ9_결과_저장소").worksheet("Sheet1")
 sheet_feedback = gs_client.open("PHQ9_결과_저장소").worksheet("Feedbacks")
 
-# === 상수 ===
+# === 상수 및 질문지 정의 ===
 KST = timezone(timedelta(hours=9))
-END_PHRASES = ["상담 종료","그만할래","끝낼게요","이만 마칠게요","종료하겠습니다","그만두고 싶어","이제 끝","종료","마무리할게요","이제 그만"]
+END_PHRASES = ["상담 종료","그만할래","끝낼게요","이만 마칠게요","종료하겠습니다",
+               "그만두고 싶어","이제 끝","종료","마무리할게요","이제 그만" ]
 PHQ9 = [
     "최근 2주간, 일상에 흥미나 즐거움을 느끼지 못하셨나요?",
     "우울하거나 슬픈 기분이 들었던 적이 있으신가요?",
@@ -69,24 +70,30 @@ GAD_ADVICE = [
 ]
 
 # === 세션 초기화 ===
-if 'phase' not in st.session_state: st.session_state.phase = 'chat'
-if 'messages' not in st.session_state: st.session_state.messages = []
-if 'scores' not in st.session_state: st.session_state.scores = []
-if 'qtype' not in st.session_state: st.session_state.qtype = None
-if 'qidx' not in st.session_state: st.session_state.qidx = 0
+if 'phase' not in st.session_state:
+    st.session_state.phase = 'chat'
+if 'messages' not in st.session_state:
+    st.session_state.messages = []
+if 'scores' not in st.session_state:
+    st.session_state.scores = []
+if 'qtype' not in st.session_state:
+    st.session_state.qtype = None
+if 'qidx' not in st.session_state:
+    st.session_state.qidx = 0
 
-# === UI 시작 ===
+# === UI 렌더링 ===
 st.title("🧠 감정상담 챗봇 + PHQ-9 & GAD-7")
 user = st.text_input("👤 이름을 입력해주세요:")
 
-# 피드백 저장
+# 상담 피드백 입력
 st.subheader("📝 상담 피드백")
 fb = st.text_area("자유롭게 피드백을 남겨주세요:")
 if st.button("피드백 제출") and fb.strip():
-    sheet_feedback.append_row(["피드백", user, fb.strip(), datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S")], value_input_option='USER_ENTERED')
+    sheet_feedback.append_row(["피드백", user, fb.strip(), datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S")],
+                              value_input_option='USER_ENTERED')
     st.success("✅ 피드백 저장 완료")
 
-# 챗 메시지 출력
+# 이전 대화 출력
 for msg in st.session_state.messages:
     with st.chat_message(msg['role']):
         st.markdown(msg['content'])
@@ -100,22 +107,24 @@ if txt := st.chat_input("무엇이 궁금하신가요?"):
         tg, lg, ag = analyze_scores(st.session_state.scores, GAD_THRESH, GAD_LEVELS, GAD_ADVICE) if st.session_state.qtype=='GAD' else (0,'','')
         now = datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S")
         # 저장 및 리포트
-        sheet_result.append_row([user, tp, lp, tg, lg, now, txt, fb.strip(), ap+" | "+ag], value_input_option='USER_ENTERED')
+        sheet_result.append_row([user, tp, lp, tg, lg, now, txt, fb.strip(), ap+" | "+ag],
+                                 value_input_option='USER_ENTERED')
         df = pd.DataFrame({
             '이름':[user],'PHQ-9':[tp],'우울 수준':[lp],'GAD-7':[tg],'불안 수준':[lg],
             '일시':[now],'피드백':[fb.strip()],'의학적 조언':[ap+" | "+ag]
         })
-        buf = io.StringIO(); df.to_csv(buf, index=False)
-        st.download_button("📄 상담 리포트 다운로드", buf.getvalue(), file_name=f"report_{user}.csv", mime="text/csv")
+        buf = io.StringIO()
+        df.to_csv(buf, index=False)
+        st.download_button("📄 상담 리포트 다운로드",buf.getvalue(),file_name=f"report_{user}.csv",mime="text/csv")
         st.info("상담이 종료되었습니다.")
         st.session_state.phase = 'done'
-    # PHQ-9 시작
+    # PHQ-9 설문 시작
     elif 'phq' in txt.lower():
         st.session_state.phase = 'survey'
         st.session_state.qtype = 'PHQ'
         st.session_state.scores = []
         st.session_state.qidx = 0
-    # GAD-7 시작
+    # GAD-7 설문 시작
     elif 'gad' in txt.lower():
         st.session_state.phase = 'survey'
         st.session_state.qtype = 'GAD'
@@ -125,7 +134,7 @@ if txt := st.chat_input("무엇이 궁금하신가요?"):
     else:
         rsp = openai.chat.completions.create(
             model="gpt-3.5-turbo",
-            messages=[{'role':'system','content':'당신은 따뜻하고 공감적인 상담 챗봇입니다.'}] + st.session_state.messages
+            messages=[{'role':'system','content':'당신은 공감적 상담 챗봇입니다.'}] + st.session_state.messages
         )
         reply = rsp.choices[0].message.content
         st.session_state.messages.append({'role':'assistant','content':reply})
@@ -133,27 +142,18 @@ if txt := st.chat_input("무엇이 궁금하신가요?"):
 # === 설문 흐름 ===
 if st.session_state.phase == 'survey':
     questions = PHQ9 if st.session_state.qtype == 'PHQ' else GAD7
-    total_q = len(questions)
     idx = st.session_state.qidx
+    total_q = len(questions)
     if idx < total_q:
         with st.chat_message('assistant'):
             st.markdown(f"**{st.session_state.qtype}-설문 {idx+1}/{total_q}:** {questions[idx]}")
-        # 라디오 및 제출 폼으로 중복 키 문제 해결
         form_key = f"form_{st.session_state.qtype}_{idx}"
         ans_key = f"ans_{st.session_state.qtype}_{idx}"
         with st.form(key=form_key):
             ans = st.radio("답변을 선택해주세요:", OPTIONS, key=ans_key)
-            submitted = st.form_submit_button("제출")
-            if submitted:
+            if st.form_submit_button("제출"):
                 st.session_state.scores.append(OPTIONS.index(ans))
                 st.session_state.qidx += 1
-                st.experimental_rerun()
     else:
-        # 설문 완료 메시지
-        st.session_state.messages.append({
-            'role': 'assistant',
-            'content': f"{st.session_state.qtype}-설문이 완료되었습니다. "
-                       f"'상담 종료'를 입력하면 결과를 정리해드립니다."
-        })
+        st.session_state.messages.append({'role':'assistant', 'content':f"{st.session_state.qtype}-설문이 완료되었습니다."})
         st.session_state.phase = 'chat'
-        st.experimental_rerun()
