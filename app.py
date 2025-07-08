@@ -1,3 +1,4 @@
+# 감정상담 챗봇 + PHQ-9 & GAD-7 평가 (캔버스 최종 수정본)
 import streamlit as st
 import openai
 import gspread
@@ -64,7 +65,6 @@ def analyze_phq9(scores):
     else:
         level = "심한 우울"
         feedback = "즉각적인 전문의 상담 및 치료가 필요합니다. 가까운 정신건강의학과를 방문하세요."
-    # 호르몬, 증상, 루틴 조언 추가
     if total >= 10:
         feedback += "\n\n- **의학적 참고**: 우울이 심할 때는 세로토닌, 도파민 등 신경전달물질의 불균형이 발생할 수 있습니다. 햇빛 쬐기, 산책, 영양 섭취가 뇌 호르몬 균형 유지에 도움이 됩니다.\n- 아침에 일찍 일어나기, 소소한 목표 세우기, 주변인과 대화, 자기 전 스마트폰 사용 줄이기 등도 추천합니다."
     return total, level, feedback
@@ -125,8 +125,13 @@ end_phrases = ["상담 종료", "그만할래", "끝낼게요", "이만 마칠�
 if prompt := st.chat_input("지금 어떤 기분이신가요?"):
     st.session_state.messages.append({"role": "user", "content": prompt})
 
+    # 설문 키워드 감지(설문 플래그만 True로 세팅, assistant 호출X)
+    if any(word in prompt.lower() for word in ["phq", "우울", "설문", "질문", "테스트"]):
+        st.session_state.show_phq9 = True
+    elif any(word in prompt.lower() for word in ["gad", "불안"]):
+        st.session_state.show_gad7 = True
     # 상담 종료
-    if any(p in prompt.lower() for p in end_phrases):
+    elif any(p in prompt.lower() for p in end_phrases):
         phq9_scores = st.session_state.phq9_scores
         gad7_scores = st.session_state.gad7_scores
         phq9_total, phq9_level, phq9_feedback = analyze_phq9(phq9_scores) if phq9_scores else (None, None, None)
@@ -178,13 +183,7 @@ if prompt := st.chat_input("지금 어떤 기분이신가요?"):
         st.download_button("📄 상담 리포트 다운로드", data=csv_bytes, file_name=f"PHQ9GAD7_{user_name}.csv", mime="text/csv")
         st.info("상담이 종료되었습니다. 언제든지 다시 찾아주세요.")
 
-    # 설문 키워드 감지
-    elif any(word in prompt.lower() for word in ["phq", "우울", "설문", "질문", "테스트"]):
-        st.session_state.show_phq9 = True
-    elif any(word in prompt.lower() for word in ["gad", "불안"]):
-        st.session_state.show_gad7 = True
-
-    # 일반 챗봇 대화
+    # 일반 챗봇 대화 (설문, 종료 둘 다 아니면 assistant 반드시 호출)
     else:
         with st.spinner("상담 중..."):
             response = openai.chat.completions.create(
