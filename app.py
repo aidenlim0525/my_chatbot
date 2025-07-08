@@ -130,20 +130,30 @@ if txt := st.chat_input("무엇이 궁금하신가요?"):
         reply = rsp.choices[0].message.content
         st.session_state.messages.append({'role':'assistant','content':reply})
 
-# 설문 흐름
+# === 설문 흐름 ===
 if st.session_state.phase == 'survey':
-    questions = PHQ9 if st.session_state.qtype=='PHQ' else GAD7
+    questions = PHQ9 if st.session_state.qtype == 'PHQ' else GAD7
     total_q = len(questions)
     idx = st.session_state.qidx
     if idx < total_q:
         with st.chat_message('assistant'):
             st.markdown(f"**{st.session_state.qtype}-설문 {idx+1}/{total_q}:** {questions[idx]}")
-        ans = st.radio("답변을 선택해주세요:", OPTIONS, key=f"ans{idx}")
-        if st.button("제출", key=f"sub{idx}"):
-            st.session_state.scores.append(OPTIONS.index(ans))
-            st.session_state.qidx += 1
-            st.experimental_rerun()
+        # 라디오 및 제출 폼으로 중복 키 문제 해결
+        form_key = f"form_{st.session_state.qtype}_{idx}"
+        ans_key = f"ans_{st.session_state.qtype}_{idx}"
+        with st.form(key=form_key):
+            ans = st.radio("답변을 선택해주세요:", OPTIONS, key=ans_key)
+            submitted = st.form_submit_button("제출")
+            if submitted:
+                st.session_state.scores.append(OPTIONS.index(ans))
+                st.session_state.qidx += 1
+                st.experimental_rerun()
     else:
-        st.session_state.messages.append({'role':'assistant','content':f"{st.session_state.qtype}-설문이 완료되었습니다."})
+        # 설문 완료 메시지
+        st.session_state.messages.append({
+            'role': 'assistant',
+            'content': f"{st.session_state.qtype}-설문이 완료되었습니다. "
+                       f"'상담 종료'를 입력하면 결과를 정리해드립니다."
+        })
         st.session_state.phase = 'chat'
         st.experimental_rerun()
