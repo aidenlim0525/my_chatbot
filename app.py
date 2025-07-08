@@ -48,11 +48,20 @@ for key in ["messages", "phq9_scores", "gad7_scores", "feedback_text"]:
 st.title("🧠 감정상담 챗봇 + PHQ-9 & GAD-7 평가")
 user_name = st.text_input("👤 상담자 이름을 입력해주세요:")
 
+# 챗봇 입력
 prompt = st.chat_input("무엇이든 이야기해 주세요.")
 if prompt:
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.spinner("답변 생성 중..."):
-        context_msgs = [{"role": "system", "content": "당신은 공감하는 심리상담 AI입니다. 사용자가 PHQ-9와 GAD-7 설문을 제출하면 이를 참고하여 답변하세요."}] + st.session_state.messages
+        # PHQ/GAD 점수 반영된 system 메시지
+        phq_total = sum(st.session_state.phq9_scores) if st.session_state.phq9_scores else 0
+        gad_total = sum(st.session_state.gad7_scores) if st.session_state.gad7_scores else 0
+        context_msgs = [{"role": "system", "content": f"""
+당신은 공감하는 심리상담 AI입니다.
+사용자의 PHQ-9 점수는 {phq_total}점, GAD-7 점수는 {gad_total}점입니다.
+점수에 따라 사용자가 느끼는 감정을 고려하여 공감적인 답변을 해주세요.
+        """.strip()}] + st.session_state.messages
+
         try:
             response = openai.chat.completions.create(
                 model="gpt-3.5-turbo",
@@ -64,10 +73,12 @@ if prompt:
             st.error("GPT 오류")
             st.exception(e)
 
+# 이전 메시지 출력
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
+# 분석 함수
 def analyze_scale(scores, scale):
     total = sum(scores)
     if scale == "PHQ":
@@ -124,33 +135,60 @@ def generate_pdf(name, phq_score, phq_level, gad_score, gad_level, medical_notes
     buffer.seek(0)
     return buffer
 
+# --- PHQ-9 설문 ---
 with st.form("phq9_form"):
     st.subheader("📋 PHQ-9 설문")
-    phq_scores = [score_options[st.radio(q, list(score_options.keys()), key=f"phq{i}", index=0)] for i, q in enumerate(phq9_questions)]
+    skip_q9 = st.checkbox("9번 문항(자살 관련)은 생략할게요.")
+    phq_questions_to_ask = phq9_questions[:-1] if skip_q9 else phq9_questions
+
+    phq_scores = []
+    for i, q in enumerate(phq_questions_to_ask):
+        score = st.radio(q, list(score_options.keys()), key=f"phq{i}")
+        if score is None:
+            st.warning("모든 문항에 응답해주세요.")
+            st.stop()
+        phq_scores.append(score_options[score])
+
     phq_submitted = st.form_submit_button("PHQ-9 제출")
+
 if phq_submitted:
     st.session_state.phq9_scores = phq_scores
     phq_total, phq_level = analyze_scale(phq_scores, "PHQ")
     st.success(f"PHQ-9 총점: {phq_total}점 → {phq_level}")
 
+# --- GAD-7 설문 ---
 with st.form("gad7_form"):
     st.subheader("📋 GAD-7 설문")
-    gad_scores = [score_options[st.radio(q, list(score_options.keys()), key=f"gad{i}", index=0)] for i, q in enumerate(gad7_questions)]
+    gad_scores = []
+    for i, q in enumerate(gad7_questions):
+        score = st.radio(q, list(score_options.keys()), key=f"gad{i}")
+        if score is None:
+            st.warning("모든 문항에 응답해주세요.")
+            st.stop()
+        gad_scores.append(score_options[score])
+
     gad_submitted = st.form_submit_button("GAD-7 제출")
+
 if gad_submitted:
     st.session_state.gad7_scores = gad_scores
     gad_total, gad_level = analyze_scale(gad_scores, "GAD")
     st.success(f"GAD-7 총점: {gad_total}점 → {gad_level}")
 
-if phq_submitted and gad_submitted:
-    med_note = medical_feedback(sum(st.session_state.phq9_scores), sum(st.session_state.gad7_scores))
-    now_kst = datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S")
-    sheet_result.append_row([
-        user_name, sum(st.session_state.phq9_scores), sum(st.session_state.gad7_scores), now_kst, st.session_state.feedback_text.strip()
-    ], value_input_option='USER_ENTERED')
-    pdf = generate_pdf(user_name, sum(st.session_state.phq9_scores), phq_level, sum(st.session_state.gad7_scores), gad_level, med_note)
-    st.download_button("📄 상담 리포트 PDF 다운로드", data=pdf, file_name=f"{user_name}_리포트.pdf")
+# --- 리포트 생성 버튼 ---
+if st.session_state.phq9_scores and st.session_state.gad7_scores:
+    st.subheader("📄 리포트 생성")
+    if st.button("지금까지 제출한 내용을 기반으로 리포트를 생성할까요?"):
+        phq_total, phq_level = analyze_scale(st.session_state.phq9_scores, "PHQ")
+        gad_total, gad_level = analyze_scale(st.session_state.gad7_scores, "GAD")
+        med_note = medical_feedback(phq_total, gad_total)
+        now_kst = datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S")
+        sheet_result.append_row([
+            user_name, phq_total, gad_total, now_kst, st.session_state.feedback_text.strip()
+        ], value_input_option='USER_ENTERED')
+        pdf = generate_pdf(user_name, phq_total, phq_level, gad_total, gad_level, med_note)
+        st.download_button("📄 상담 리포트 PDF 다운로드", data=pdf, file_name=f"{user_name}_리포트.pdf")
 
+# --- 피드백 제출 ---
 st.subheader("💬 상담 피드백")
 st.session_state.feedback_text = st.text_area("자유롭게 피드백을 남겨주세요:", value=st.session_state.feedback_text)
 if st.button("피드백 제출"):
