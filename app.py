@@ -66,6 +66,7 @@ GAD_ADVICE = [
     "지속적 불안이 일상에 영향을 준다면 전문가 진료를 권장합니다."
 ]
 
+# 세션 상태 초기화
 if 'phase' not in st.session_state:
     st.session_state.phase = 'chat'
 if 'messages' not in st.session_state:
@@ -76,6 +77,8 @@ if 'qtype' not in st.session_state:
     st.session_state.qtype = None
 if 'qidx' not in st.session_state:
     st.session_state.qidx = 0
+if 'needs_rerun' not in st.session_state:
+    st.session_state.needs_rerun = False
 
 st.title("🧠 감정상담 챗봇 + PHQ-9 & GAD-7")
 user = st.text_input("👤 이름을 입력해주세요:")
@@ -116,21 +119,22 @@ if txt := st.chat_input("무엇이 궁금하신가요?"):
         st.download_button("📄 상담 리포트 다운로드", buf.getvalue(), file_name=f"report_{user}.csv", mime="text/csv")
         st.info("상담이 종료되었습니다.")
         st.session_state.phase = 'done'
-        st.stop()  # 종료 시 rerun 없이 stop
+        st.session_state.needs_rerun = False
+        st.stop()
     # PHQ-9 설문 시작
     elif 'phq' in txt.lower():
         st.session_state.phase = 'survey'
         st.session_state.qtype = 'PHQ'
         st.session_state.scores = []
         st.session_state.qidx = 0
-        st.experimental_rerun()
+        st.session_state.needs_rerun = True
     # GAD-7 설문 시작
     elif 'gad' in txt.lower():
         st.session_state.phase = 'survey'
         st.session_state.qtype = 'GAD'
         st.session_state.scores = []
         st.session_state.qidx = 0
-        st.experimental_rerun()
+        st.session_state.needs_rerun = True
     # 일반 대화
     else:
         sysmsg = {'role':'system','content': (
@@ -144,7 +148,7 @@ if txt := st.chat_input("무엇이 궁금하신가요?"):
         )
         reply = rsp.choices[0].message.content
         st.session_state.messages.append({'role':'assistant','content':reply})
-        st.experimental_rerun()   # chat 대화에서만 rerun!
+        st.session_state.needs_rerun = True
 
 # --- 설문 흐름 ---
 if st.session_state.phase == 'survey':
@@ -172,4 +176,9 @@ if st.session_state.phase == 'survey':
         st.session_state.phase = 'chat'
         st.session_state.qidx = 0
         st.session_state.qtype = None
-        st.stop()  # 설문 종료 후 rerun 없이 stop
+        st.stop()
+
+# --- 챗 대화 자동 새로고침 ---
+if st.session_state.needs_rerun:
+    st.session_state.needs_rerun = False
+    st.experimental_rerun()
