@@ -24,7 +24,7 @@ sheet_feedback = gs_client.open("PHQ9_결과_저장소").worksheet("Feedbacks")
 
 KST = timezone(timedelta(hours=9))
 
-# --- 상태 초기화 ---
+# --- 상태 초기화 및 타입 검사 ---
 initial_state = {
     "messages": [],
     "phq9_scores": [],
@@ -32,7 +32,7 @@ initial_state = {
     "feedback_text": ""
 }
 for key, default in initial_state.items():
-    if key not in st.session_state:
+    if not isinstance(st.session_state.get(key, None), type(default)):
         st.session_state[key] = default
 
 # --- 설문 문항 ---
@@ -58,13 +58,15 @@ gad7_questions = [
 ]
 score_options = {"전혀 아님 (0점)": 0, "며칠 동안 (1점)": 1, "일주일 이상 (2점)": 2, "거의 매일 (3점)": 3}
 
-# --- 타이틀 ---
+# --- 타이틀 및 이름 입력 ---
 st.title("🧠 감정상담 챗봇 + PHQ-9 & GAD-7 평가")
 user_name = st.text_input("👤 상담자 이름을 입력해주세요:")
 
 # --- 채팅 입력 처리 ---
 prompt = st.chat_input("무엇이든 이야기해 주세요.")
 if prompt:
+    if not isinstance(st.session_state.messages, list):  # 안전한 타입 검사
+        st.session_state.messages = []
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.spinner("답변 생성 중..."):
         phq_total = sum(st.session_state.phq9_scores)
@@ -90,7 +92,7 @@ for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-# --- 점수 분석 ---
+# --- 점수 분석 함수 ---
 def analyze_scale(scores, scale):
     total = sum(scores)
     if scale == "PHQ":
