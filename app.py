@@ -24,6 +24,18 @@ sheet_feedback = gs_client.open("PHQ9_결과_저장소").worksheet("Feedbacks")
 
 KST = timezone(timedelta(hours=9))
 
+# --- 상태 초기화 ---
+initial_state = {
+    "messages": [],
+    "phq9_scores": [],
+    "gad7_scores": [],
+    "feedback_text": ""
+}
+for key, default in initial_state.items():
+    if key not in st.session_state:
+        st.session_state[key] = default
+
+# --- 설문 문항 ---
 phq9_questions = [
     "최근 2주간, 일상에 흥미나 즐거움을 느끼지 못한 적이 있었나요?",
     "우울하거나 슬픈 기분이 들었던 적이 있었나요?",
@@ -44,21 +56,19 @@ gad7_questions = [
     "불안으로 인해 편안히 쉬기 어려웠던 적이 있었나요?",
     "집중이 잘 되지 않았던 적이 있었나요?"
 ]
-score_options = {"전혀 아님 (0점)":0, "며칠 동안 (1점)":1, "일주일 이상 (2점)":2, "거의 매일 (3점)":3}
+score_options = {"전혀 아님 (0점)": 0, "며칠 동안 (1점)": 1, "일주일 이상 (2점)": 2, "거의 매일 (3점)": 3}
 
-for key in ["messages", "phq9_scores", "gad7_scores", "feedback_text"]:
-    if key not in st.session_state:
-        st.session_state[key] = [] if key.endswith("scores") else ""
-
+# --- 타이틀 ---
 st.title("🧠 감정상담 챗봇 + PHQ-9 & GAD-7 평가")
 user_name = st.text_input("👤 상담자 이름을 입력해주세요:")
 
+# --- 채팅 입력 처리 ---
 prompt = st.chat_input("무엇이든 이야기해 주세요.")
 if prompt:
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.spinner("답변 생성 중..."):
-        phq_total = sum(st.session_state.phq9_scores) if st.session_state.phq9_scores else 0
-        gad_total = sum(st.session_state.gad7_scores) if st.session_state.gad7_scores else 0
+        phq_total = sum(st.session_state.phq9_scores)
+        gad_total = sum(st.session_state.gad7_scores)
         context_msgs = [{"role": "system", "content": f"""
 당신은 공감하는 심리상담 AI입니다.
 사용자의 PHQ-9 점수는 {phq_total}점, GAD-7 점수는 {gad_total}점입니다.
@@ -75,10 +85,12 @@ if prompt:
             st.error("GPT 오류")
             st.exception(e)
 
+# --- 채팅 메시지 출력 ---
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
+# --- 점수 분석 ---
 def analyze_scale(scores, scale):
     total = sum(scores)
     if scale == "PHQ":
@@ -135,13 +147,13 @@ def generate_pdf(name, phq_score, phq_level, gad_score, gad_level, medical_notes
     buffer.seek(0)
     return buffer
 
-# 설문
+# --- PHQ-9 설문 ---
 with st.form("phq9_form"):
     st.subheader("📋 PHQ-9 설문")
     skip_q9 = st.checkbox("9번 문항(자살 관련)은 생략할게요.")
-    phq_questions_to_ask = phq9_questions[:-1] if skip_q9 else phq9_questions
+    phq_to_ask = phq9_questions[:-1] if skip_q9 else phq9_questions
     phq_scores = []
-    for i, q in enumerate(phq_questions_to_ask):
+    for i, q in enumerate(phq_to_ask):
         score = st.radio(q, list(score_options.keys()), key=f"phq{i}")
         phq_scores.append(score_options[score])
     phq_submitted = st.form_submit_button("PHQ-9 제출")
@@ -151,6 +163,7 @@ if phq_submitted:
     phq_total, phq_level = analyze_scale(phq_scores, "PHQ")
     st.success(f"PHQ-9 총점: {phq_total}점 → {phq_level}")
 
+# --- GAD-7 설문 ---
 with st.form("gad7_form"):
     st.subheader("📋 GAD-7 설문")
     gad_scores = []
@@ -164,7 +177,7 @@ if gad_submitted:
     gad_total, gad_level = analyze_scale(gad_scores, "GAD")
     st.success(f"GAD-7 총점: {gad_total}점 → {gad_level}")
 
-# 리포트 생성 버튼
+# --- 리포트 생성 ---
 if st.session_state.phq9_scores and st.session_state.gad7_scores:
     st.subheader("📄 리포트 생성")
     if st.button("지금까지 제출한 내용을 기반으로 리포트를 생성할까요?"):
@@ -178,7 +191,7 @@ if st.session_state.phq9_scores and st.session_state.gad7_scores:
         pdf = generate_pdf(user_name, phq_total, phq_level, gad_total, gad_level, med_note)
         st.download_button("📄 상담 리포트 PDF 다운로드", data=pdf, file_name=f"{user_name}_리포트.pdf")
 
-# 피드백
+# --- 피드백 입력 ---
 st.subheader("💬 상담 피드백")
 st.session_state.feedback_text = st.text_area("자유롭게 피드백을 남겨주세요:", value=st.session_state.feedback_text)
 if st.button("피드백 제출"):
